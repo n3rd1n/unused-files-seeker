@@ -1,0 +1,17 @@
+{
+  "entryPoint": "index.js",
+  "scanFolder": "src",
+  "ignorePaths": [
+    "node_modules",
+    "dist",
+    "build",
+    ".git",
+    "coverage"
+  ],
+  "extensions": [
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx"
+  ]
+}
