@@ -24,7 +24,7 @@ program
       const seeker = new UnusedFilesSeeker(config, projectRoot);
       const result = await seeker.findUnusedFiles();
       
-      console.log(seeker.formatResults(result));
+      console.info(seeker.formatResults(result));
       
       if (result.unusedFiles.length > 0) {
         process.exit(1);

@@ -17,28 +17,35 @@ export class UnusedFilesSeeker {
 	}
 
 	async findUnusedFiles(): Promise<ScanResult> {
-		console.log('🔍 Starting scan for unused files...')
+		console.info('🔍 Starting scan for unused files...')
 
-		const allFiles = await this.fileScanner.scanAllFiles()
-		console.log(`📁 ${allFiles.length} files found`)
+		const allFiles: File[] = await this.fileScanner.scanAllFiles()
+		const entryPoint: string = this.findEntryPoint()
+		const allFilesWithoutEntryPoint: File[] = allFiles.filter(
+			(file) => file.path !== entryPoint
+		)
+		console.info(
+			`📁 ${allFilesWithoutEntryPoint.length} files found (without Entry Point)`
+		)
 
-		const entryPoint = this.findEntryPoint()
-		console.log(`🚀 Entry Point: ${entryPoint}`)
+		console.info(`🚀 Entry Point: ${entryPoint}`)
 
 		await this.buildImportGraph(allFiles, entryPoint)
 
-		const usedFiles = allFiles.filter(
+		const usedFiles = allFilesWithoutEntryPoint.filter(
 			(file) => file.isUsedByAbsoluteFilePath.length > 0
 		)
-		const unusedFiles = allFiles.filter(
+		const unusedFiles = allFilesWithoutEntryPoint.filter(
 			(file) => file.isUsedByAbsoluteFilePath.length === 0
 		)
 
-		console.log(`✅ ${usedFiles.length} used files`)
-		console.log(`❌ ${unusedFiles.length} unused files`)
+		console.info(`✅ ${usedFiles.length} used files`)
+		if (unusedFiles.length) {
+			console.info(`❌ ${unusedFiles.length} unused files`)
+		}
 
 		return {
-			allFiles,
+			allFiles: allFilesWithoutEntryPoint,
 			unusedFiles,
 			usedFiles,
 		}
@@ -75,7 +82,7 @@ export class UnusedFilesSeeker {
 			}
 
 			scannedFiles.add(currentFile)
-			console.log(`📖 Scanning: ${path.relative(this.projectRoot, currentFile)}`)
+			console.info(`📖 Scanning: ${path.relative(this.projectRoot, currentFile)}`)
 
 			try {
 				const content = this.fileScanner.readFileContent(currentFile)
@@ -124,7 +131,9 @@ export class UnusedFilesSeeker {
 
 		output += `📁 Total: ${result.allFiles.length} files\n`
 		output += `✅ Used: ${result.usedFiles.length} files\n`
-		output += `❌ Unused: ${result.unusedFiles.length} files\n\n`
+		if (result.unusedFiles.length) {
+			output += `❌ Unused: ${result.unusedFiles.length} files\n\n`
+		}
 
 		if (result.unusedFiles.length > 0) {
 			output += '🗑️  UNUSED FILES:\n'
@@ -132,7 +141,7 @@ export class UnusedFilesSeeker {
 
 			result.unusedFiles.forEach((file) => {
 				const relativePath = path.relative(this.projectRoot, file.path)
-				output += `  ${relativePath}\n`
+				output += `${relativePath}\n`
 			})
 		}
 
