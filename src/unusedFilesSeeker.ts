@@ -24,9 +24,7 @@ export class UnusedFilesSeeker {
 		const allFilesWithoutEntryPoint: File[] = allFiles.filter(
 			(file) => file.path !== entryPoint
 		)
-		console.info(
-			`📁 ${allFilesWithoutEntryPoint.length} files found (without Entry Point)`
-		)
+		console.info(`📁 ${allFilesWithoutEntryPoint.length} files found (without Entry Point)`)
 
 		console.info(`🚀 Entry Point: ${entryPoint}`)
 
@@ -89,25 +87,14 @@ export class UnusedFilesSeeker {
 				const imports = this.importParser.extractImports(content)
 
 				for (const importPath of imports) {
-					const resolvedPath = this.fileScanner.resolveImportPath(
-						importPath,
-						currentFile
-					)
+					const resolvedPath = this.fileScanner.resolveImportPath(importPath, currentFile)
 
 					if (resolvedPath) {
-						const targetFile = allFiles.find(
-							(file) => file.path === resolvedPath
-						)
+						const targetFile = allFiles.find((file) => file.path === resolvedPath)
 
 						if (targetFile) {
-							if (
-								!targetFile.isUsedByAbsoluteFilePath.includes(
-									currentFile
-								)
-							) {
-								targetFile.isUsedByAbsoluteFilePath.push(
-									currentFile
-								)
+							if (!targetFile.isUsedByAbsoluteFilePath.includes(currentFile)) {
+								targetFile.isUsedByAbsoluteFilePath.push(currentFile)
 							}
 
 							if (

@@ -1,49 +1,50 @@
 {
-  "name": "@n3rd1n/unused-files-seeker",
-  "version": "1.0.0",
-  "description": "A tool to find unused files in JavaScript/TypeScript projects",
-  "main": "dist/index.js",
-  "bin": {
-    "unused-files-seeker": "dist/cli.js"
-  },
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "start": "node dist/index.js",
-    "prepublishOnly": "npm run build"
-  },
-  "keywords": [
-    "unused-files",
-    "dead-code",
-    "cleanup",
-    "javascript",
-    "typescript",
-    "analysis"
-  ],
-  "author": "n3rd1n",
-  "license": "MIT",
-  "files": [
-    "dist/**/*",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=14.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "commander": "^11.0.0",
-    "glob": "^10.0.0"
-  },
-  "types": "./dist/index.d.ts",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/n3rd1n/unused-files-seeker.git"
-  },
-  "bugs": {
-    "url": "https://github.com/n3rd1n/unused-files-seeker/issues"
-  },
-  "homepage": "https://github.com/n3rd1n/unused-files-seeker#readme"
+	"name": "@n3rd1n/unused-files-seeker",
+	"version": "1.0.0",
+	"description": "A tool to find unused files in JavaScript/TypeScript projects",
+	"main": "dist/index.js",
+	"bin": {
+		"unused-files-seeker": "dist/cli.js"
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"start": "node dist/index.js",
+		"prepublishOnly": "npm run build",
+		"format": "npx prettier --write src"
+	},
+	"keywords": [
+		"unused-files",
+		"dead-code",
+		"cleanup",
+		"javascript",
+		"typescript",
+		"analysis"
+	],
+	"author": "n3rd1n",
+	"license": "MIT",
+	"files": [
+		"dist/**/*",
+		"README.md"
+	],
+	"engines": {
+		"node": ">=14.0.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.0.0"
+	},
+	"dependencies": {
+		"commander": "^11.0.0",
+		"glob": "^10.0.0"
+	},
+	"types": "./dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/n3rd1n/unused-files-seeker.git"
+	},
+	"bugs": {
+		"url": "https://github.com/n3rd1n/unused-files-seeker/issues"
+	},
+	"homepage": "https://github.com/n3rd1n/unused-files-seeker#readme"
 }
