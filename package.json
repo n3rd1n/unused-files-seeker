@@ -1,6 +1,6 @@
 {
 	"name": "@n3rd1n/unused-files-seeker",
-	"version": "2.0.0",
+	"version": "2.0.1",
 	"description": "A tool to find unused files in JavaScript/TypeScript projects",
 	"main": "dist/index.js",
 	"bin": {

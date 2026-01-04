@@ -151,6 +151,10 @@ function getAllFilesRecursive(
 			entry.isFile() &&
 			extensions.some((ext) => entry.name.endsWith(ext))
 		) {
+			// Ignore test files (.spec.* and .test.*)
+			if (/\.(spec|test)\.[jt]sx?$/.test(entry.name)) {
+				return []
+			}
 			return [fullPath]
 		}
 
