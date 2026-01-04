@@ -1,94 +1,77 @@
-# Unused Files Seeker
+# @n3rd1n/unused-files-seeker
 
-An npm package for finding unused files in JavaScript/TypeScript projects.
+🔍 Find unused files in your TypeScript/JavaScript project.
 
 ## Installation
 
 ```bash
-npm install -g unused-files-seeker
+npx @n3rd1n/unused-files-seeker <entry-file>
+```
+
+Or install globally:
+
+```bash
+npm install -g @n3rd1n/unused-files-seeker
 ```
 
 ## Usage
 
-### CLI Commands
-
-#### Scan project
 ```bash
-unused-files-seeker scan
+# Scan from an entry file
+npx @n3rd1n/unused-files-seeker src/App.tsx
+
+# Delete unused files directly
+npx @n3rd1n/unused-files-seeker src/App.tsx --delete
 ```
 
-#### With custom options
-```bash
-unused-files-seeker scan --config ./my-config.json --project ./my-project
+## Example Output
+
+```
+🔍 Scanning from: src/App.tsx
+
+📊 Statistics:
+   All files:      42
+   Used files:     38
+   Unused:         4
+
+📋 Unused files:
+   - src/components/OldButton.tsx
+   - src/utils/deprecated.ts
+   - src/hooks/useUnused.ts
+   - src/types/legacy.ts
+
+💡 Tip: Use --delete to remove these files.
 ```
 
-#### Create configuration file
-```bash
-unused-files-seeker init
-```
+## Features
 
-### Configuration
+- ✅ Recursive scanning from the entry file
+- ✅ Respects `baseUrl` from `tsconfig.json`
+- ✅ Supports `.ts`, `.tsx`, `.js`, `.jsx` files
+- ✅ Ignores `node_modules` and hidden folders
+- ✅ `--delete` flag for direct removal
 
-Create an `unused-files-seeker.config.json` file in your project:
+## How It Works
+
+1. Starts at the specified entry file (e.g. `src/App.tsx`)
+2. Analyzes all imports recursively using tree-sitter
+3. Collects all files in the directory
+4. Compares: Which files are not imported?
+5. Outputs unused files (or deletes them with `--delete`)
+
+## tsconfig.json Support
+
+The tool respects the `baseUrl` from your `tsconfig.json`:
 
 ```json
 {
-  "entryPoint": "index.js",
-  "scanFolder": "src",
-  "ignorePaths": [
-    "node_modules",
-    "dist",
-    "build",
-    ".git",
-    "coverage"
-  ],
-  "extensions": [
-    ".js",
-    ".ts",
-    ".jsx",
-    ".tsx"
-  ]
+  "compilerOptions": {
+    "baseUrl": "src"
+  }
 }
 ```
 
-#### Configuration Options
-
-- `entryPoint` (optional): The entry point of your project. Default: `index.js`
-- `scanFolder` (optional): The folder to be scanned. Default: `src`
-- `ignorePaths` (optional): Array of paths to be ignored
-- `extensions` (optional): Array of file extensions to be scanned
-
-### Programming
-
-```typescript
-import { UnusedFilesSeeker, loadConfig } from 'unused-files-seeker';
-
-const config = loadConfig('./my-config.json');
-const seeker = new UnusedFilesSeeker(config, './my-project');
-
-const result = await seeker.findUnusedFiles();
-console.log(result.unusedFiles); // Array of unused files
-```
-
-## How it works
-
-1. **File Collection**: The tool collects all files in the specified scan folder
-2. **Entry Point**: Starts at the configured entry point (or `index.js`/`index.ts`)
-3. **Import Analysis**: Analyzes all import statements in the files
-4. **Dependency Graph**: Builds a graph of file dependencies
-5. **Unused Files**: Identifies files that are not imported by other files
-
-## Supported Import Formats
-
-- ES6 Imports: `import ... from '...'`
-- CommonJS: `require('...')`
-- Dynamic Imports: `import('...')`
-- TypeScript Triple-Slash Directives: `/// <reference path="..." />`
-
-## Exit Codes
-
-- `0`: No unused files found
-- `1`: Unused files found or error occurred
+This way, absolute imports like `import { Button } from 'components/Button'` are resolved correctly.
 
 ## License
 

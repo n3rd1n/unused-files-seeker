@@ -8,18 +8,17 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"dev": "tsc --watch",
-		"start": "node dist/index.js",
 		"prepublishOnly": "npm run build",
-		"format": "npx prettier --write src"
+    	"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,md}\"",
+    	"test": "node dist/cli.js test-project_2/App.tsx --ignore apiAuto"
 	},
 	"keywords": [
-		"unused-files",
-		"dead-code",
-		"cleanup",
-		"javascript",
-		"typescript",
-		"analysis"
+    	"unused",
+    	"files",
+    	"seeker",
+    	"typescript",
+    	"javascript",
+    	"cleanup"
 	],
 	"author": "n3rd1n",
 	"license": "MIT",
@@ -30,15 +29,14 @@
 	"engines": {
 		"node": ">=14.0.0"
 	},
-	"devDependencies": {
-		"@types/node": "^20.0.0",
-		"typescript": "^5.0.0"
-	},
-	"dependencies": {
-		"commander": "^11.0.0",
-		"glob": "^10.0.0"
-	},
-	"types": "./dist/index.d.ts",
+  	"dependencies": {
+    	"tree-sitter": "^0.21.1",
+    	"tree-sitter-typescript": "^0.23.2"
+  	},
+  	"devDependencies": {
+    	"@types/node": "^24.9.1",
+    	"typescript": "^5.0.0"
+  	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/n3rd1n/unused-files-seeker.git"
