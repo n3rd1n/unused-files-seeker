@@ -538,7 +538,12 @@ function applyPathMappings(
 		best.prefix.length,
 		specifier.length - best.suffix.length
 	)
-	return best.targets.map((target) => target.replace('*', matched))
+	// The matched part comes from a module specifier and always uses forward
+	// slashes; normalize so the result matches the separators the directory
+	// walk produces. Without this, the same file has two spellings on Windows.
+	return best.targets.map((target) =>
+		path.normalize(target.replace('*', matched))
+	)
 }
 
 function collectUsedFiles(

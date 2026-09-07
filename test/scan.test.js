@@ -162,6 +162,14 @@ test('--root widens the scan to the whole source tree', () => {
 	const used = result.usedFiles
 	assert.ok(used.has(path.join(root, 'src', 'lib', 'used.ts')))
 	assert.ok(used.has(path.join(root, 'src', 'components', 'Button.ts')))
+
+	// Every path must be in its platform-native form. A path built by
+	// substituting into a `paths` target keeps the specifier's forward
+	// slashes, which on Windows yields a second spelling of the same file
+	// and makes it look unused. No-op on POSIX, a real guard on Windows.
+	for (const file of [...used, ...result.allFiles]) {
+		assert.strictEqual(file, path.normalize(file))
+	}
 })
 
 test('a missing root directory throws', () => {
