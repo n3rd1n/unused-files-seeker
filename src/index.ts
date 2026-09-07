@@ -29,6 +29,11 @@ type ScanOptions = {
 	ignore?: string[]
 }
 
+type DeleteOptions = {
+	/** Suppress per-file console output (used by the CLI's --json mode). */
+	silent?: boolean
+}
+
 type DeleteResult = {
 	deleted: string[]
 	failed: string[]
@@ -314,7 +319,8 @@ export function scanUnusedFiles(
 
 export function deleteFiles(
 	files: string[],
-	formatPath: (p: string) => string = (p) => p
+	formatPath: (p: string) => string = (p) => p,
+	options: DeleteOptions = {}
 ): DeleteResult {
 	const deleted: string[] = []
 	const failed: string[] = []
@@ -323,10 +329,14 @@ export function deleteFiles(
 		try {
 			fs.unlinkSync(file)
 			deleted.push(file)
-			console.info(`🗑️  Deleted: ${formatPath(file)}`)
+			if (!options.silent) {
+				console.info(`🗑️  Deleted: ${formatPath(file)}`)
+			}
 		} catch {
 			failed.push(file)
-			console.error(`❌ Error deleting: ${formatPath(file)}`)
+			if (!options.silent) {
+				console.error(`❌ Error deleting: ${formatPath(file)}`)
+			}
 		}
 	})
 

@@ -20,8 +20,45 @@ npm install -g @n3rd1n/unused-files-seeker
 # Scan from an entry file
 npx @n3rd1n/unused-files-seeker src/App.tsx
 
-# Delete unused files directly
+# Delete unused files (asks for confirmation)
 npx @n3rd1n/unused-files-seeker src/App.tsx --delete
+
+# Delete without the prompt (for scripts)
+npx @n3rd1n/unused-files-seeker src/App.tsx --delete --yes
+
+# Machine-readable report
+npx @n3rd1n/unused-files-seeker src/App.tsx --json > report.json
+
+# Fail the build when unused files remain
+npx @n3rd1n/unused-files-seeker src/App.tsx --fail-on-found
+```
+
+## Options
+
+| Option | Description |
+| --- | --- |
+| `--delete` | Delete unused files. Asks for confirmation. |
+| `-y`, `--yes` | Skip the confirmation prompt for `--delete`. |
+| `--json` | Print the result as JSON (absolute paths) on stdout. |
+| `--fail-on-found` | Exit with code 1 when unused files remain. |
+| `--ignore <path>` | Ignore a file or folder. Can be used multiple times. |
+| `-h`, `--help` | Show help. |
+| `-v`, `--version` | Show the version. |
+
+`--delete` never removes anything unconfirmed: in an interactive shell it
+prompts, and in a non-interactive one it refuses unless `--yes` is passed.
+
+## Exit Codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success |
+| `1` | Error, or unused files remain while `--fail-on-found` is set |
+
+## CI Example
+
+```yaml
+- run: npx @n3rd1n/unused-files-seeker src/index.ts --fail-on-found
 ```
 
 ## Example Output
@@ -51,7 +88,8 @@ npx @n3rd1n/unused-files-seeker src/App.tsx --delete
 - ✅ Supports `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`
 - ✅ Ignores `node_modules` and hidden folders
 - ✅ Test files and `.d.ts` files are never deletion candidates
-- ✅ `--delete` flag for direct removal
+- ✅ `--delete` flag with a confirmation guard
+- ✅ `--json` output and CI-friendly exit codes
 
 ## How It Works
 
