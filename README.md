@@ -2,6 +2,10 @@
 
 🔍 Find unused files in your TypeScript/JavaScript project.
 
+## Requirements
+
+Node.js `^20.19.0 || >=22.12.0`.
+
 ## Installation
 
 ```bash
@@ -94,7 +98,7 @@ prompts, and in a non-interactive one it refuses unless `--yes` is passed.
 ## How It Works
 
 1. Starts at the specified entry file (e.g. `src/App.tsx`)
-2. Analyzes all imports recursively using tree-sitter — including re-exports
+2. Analyzes all imports recursively using [oxc](https://oxc.rs) — including re-exports
    (`export { x } from './x'`), dynamic `import()` and `require()`
 3. Collects all files in the directory
 4. Compares: Which files are not imported?

@@ -1,7 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import Parser from 'tree-sitter'
-import TypeScript from 'tree-sitter-typescript'
+import { parseSync } from 'oxc-parser'
 
 // ============ Types ============
 
@@ -39,11 +38,6 @@ type DeleteResult = {
 	failed: string[]
 }
 
-// ============ Parser Setup ============
-
-const tsParser = new Parser()
-tsParser.setLanguage(TypeScript.tsx)
-
 // ============ Pure Functions ============
 
 function getFileExtensions(): string[] {
@@ -62,10 +56,62 @@ function isRelativeImport(importPath: string): boolean {
 	return importPath.startsWith('./') || importPath.startsWith('../')
 }
 
-/** Strips the surrounding quotes from a tree-sitter string literal node. */
-function getStringLiteralValue(node: Parser.SyntaxNode | null): string | null {
-	if (!node || node.text.length < 2) return null
-	return node.text.slice(1, -1)
+/** Picks the parser dialect from the file extension. */
+function getParserLanguage(filePath: string): 'ts' | 'tsx' | 'jsx' {
+	const extension = path.extname(filePath)
+	if (extension === '.tsx') return 'tsx'
+	if (extension === '.ts' || extension === '.mts' || extension === '.cts') {
+		return 'ts'
+	}
+	// jsx is a superset of js and also covers .mjs/.cjs
+	return 'jsx'
+}
+
+/** Returns the value of a quoted string literal, or null for any other source. */
+function getQuotedValue(raw: string): string | null {
+	const quote = raw[0]
+	if (raw.length < 2) return null
+	if (quote !== "'" && quote !== '"') return null
+	if (raw[raw.length - 1] !== quote) return null
+	return raw.slice(1, -1)
+}
+
+/**
+ * Walks the AST for `require('…')`. CommonJS is not part of the ES module
+ * record, so this is the only construct that needs a traversal.
+ */
+function collectRequireCalls(node: unknown, specifiers: string[]): void {
+	if (!node || typeof node !== 'object') return
+
+	if (Array.isArray(node)) {
+		for (const child of node) collectRequireCalls(child, specifiers)
+		return
+	}
+
+	const record = node as Record<string, unknown>
+
+	if (record.type === 'CallExpression') {
+		const callee = record.callee as Record<string, unknown> | undefined
+		const args = record.arguments as Record<string, unknown>[] | undefined
+		const first = args?.[0]
+
+		if (
+			callee?.type === 'Identifier' &&
+			callee.name === 'require' &&
+			first?.type === 'Literal' &&
+			typeof first.value === 'string'
+		) {
+			specifiers.push(first.value)
+		}
+	}
+
+	for (const key in record) {
+		if (key === 'type' || key === 'start' || key === 'end') continue
+		const value = record[key]
+		if (value && typeof value === 'object') {
+			collectRequireCalls(value, specifiers)
+		}
+	}
 }
 
 /**
@@ -73,41 +119,44 @@ function getStringLiteralValue(node: Parser.SyntaxNode | null): string | null {
  * `import ... from '…'`, `import '…'`, `export ... from '…'`,
  * `export * from '…'`, `import('…')` and `require('…')`.
  */
-function getImportSpecifiers(rootNode: Parser.SyntaxNode): string[] {
+function getImportSpecifiers(sourceCode: string, filePath: string): string[] {
 	const specifiers: string[] = []
 
+	let parsed
+	try {
+		parsed = parseSync(filePath, sourceCode, {
+			lang: getParserLanguage(filePath),
+		})
+	} catch {
+		// A file we cannot parse contributes no edges to the graph.
+		return specifiers
+	}
+
 	// `import ... from '…'` and bare `import '…'`
-	for (const node of rootNode.descendantsOfType('import_statement')) {
-		const specifier = getStringLiteralValue(
-			node.childForFieldName('source')
-		)
-		if (specifier) specifiers.push(specifier)
+	for (const entry of parsed.module.staticImports) {
+		specifiers.push(entry.moduleRequest.value)
 	}
 
 	// `export { x } from '…'`, `export * from '…'`, `export * as ns from '…'`
-	for (const node of rootNode.descendantsOfType('export_statement')) {
-		const specifier = getStringLiteralValue(
-			node.childForFieldName('source')
-		)
-		if (specifier) specifiers.push(specifier)
+	for (const statement of parsed.module.staticExports) {
+		for (const entry of statement.entries) {
+			if (entry.moduleRequest) {
+				specifiers.push(entry.moduleRequest.value)
+			}
+		}
 	}
 
-	// `import('…')` and `require('…')`
-	for (const node of rootNode.descendantsOfType('call_expression')) {
-		const callee = node.childForFieldName('function')
-		if (!callee) continue
+	// The request of `import(…)` can be any expression; only plain string
+	// literals point at a file we can resolve.
+	for (const entry of parsed.module.dynamicImports) {
+		const { start, end } = entry.moduleRequest
+		const value = getQuotedValue(sourceCode.slice(start, end))
+		if (value !== null) specifiers.push(value)
+	}
 
-		const isDynamicImport = callee.type === 'import'
-		const isRequire =
-			callee.type === 'identifier' && callee.text === 'require'
-		if (!isDynamicImport && !isRequire) continue
-
-		const firstArgument =
-			node.childForFieldName('arguments')?.namedChild(0) ?? null
-		if (firstArgument?.type !== 'string') continue
-
-		const specifier = getStringLiteralValue(firstArgument)
-		if (specifier) specifiers.push(specifier)
+	// Only pay for the AST walk in files that actually mention require.
+	if (sourceCode.includes('require')) {
+		collectRequireCalls(parsed.program, specifiers)
 	}
 
 	return specifiers
@@ -153,10 +202,9 @@ function extractImports(
 	currentFilePath: string,
 	basePath: string | null
 ): Import[] {
-	const tree = tsParser.parse(sourceCode)
 	const currentFileDir = path.dirname(currentFilePath)
 
-	return getImportSpecifiers(tree.rootNode)
+	return getImportSpecifiers(sourceCode, currentFilePath)
 		.map((importPath) => {
 			// Bare specifiers only resolve locally when a baseUrl is configured;
 			// otherwise they refer to packages and are not our concern.
