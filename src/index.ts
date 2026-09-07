@@ -24,6 +24,21 @@ type ScanResult = {
 	extraEntryFiles: string[]
 }
 
+type PathMapping = {
+	pattern: string
+	prefix: string
+	suffix: string
+	isWildcard: boolean
+	/** Absolute path templates; a `*` is substituted with the matched part. */
+	targets: string[]
+}
+
+/** Module resolution settings derived from tsconfig.json. */
+type ModuleResolution = {
+	baseUrl: string | null
+	paths: PathMapping[]
+}
+
 type ScanOptions = {
 	ignore?: string[]
 }
@@ -162,45 +177,54 @@ function getImportSpecifiers(sourceCode: string, filePath: string): string[] {
 	return specifiers
 }
 
+/** Tries a path as a file, with extensions, then as a directory index. */
+function resolveFileCandidate(candidate: string): string | null {
+	if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+		return candidate
+	}
+
+	for (const ext of getFileExtensions()) {
+		const withExt = candidate + ext
+		if (fs.existsSync(withExt)) return withExt
+	}
+
+	for (const ext of getFileExtensions()) {
+		const indexFile = path.join(candidate, `index${ext}`)
+		if (fs.existsSync(indexFile)) return indexFile
+	}
+
+	return null
+}
+
 function resolveImportPath(
 	importPath: string,
 	currentFileDir: string,
-	basePath: string | null
+	resolution: ModuleResolution
 ): string | null {
-	if (!isRelativeImport(importPath) && !basePath) return null
-
-	const resolvedBase = isRelativeImport(importPath)
-		? path.resolve(currentFileDir, importPath)
-		: path.resolve(basePath as string, importPath)
-
-	// Direct match with extension
-	if (fs.existsSync(resolvedBase) && fs.statSync(resolvedBase).isFile()) {
-		return resolvedBase
+	if (isRelativeImport(importPath)) {
+		return resolveFileCandidate(path.resolve(currentFileDir, importPath))
 	}
 
-	// Try extensions
-	for (const ext of getFileExtensions()) {
-		const withExt = resolvedBase + ext
-		if (fs.existsSync(withExt)) {
-			return withExt
-		}
+	// A bare specifier: tsconfig `paths` take precedence over `baseUrl`.
+	for (const target of applyPathMappings(importPath, resolution.paths)) {
+		const resolved = resolveFileCandidate(target)
+		if (resolved) return resolved
 	}
 
-	// Try index files
-	for (const ext of getFileExtensions()) {
-		const indexFile = path.join(resolvedBase, `index${ext}`)
-		if (fs.existsSync(indexFile)) {
-			return indexFile
-		}
+	if (resolution.baseUrl) {
+		return resolveFileCandidate(
+			path.resolve(resolution.baseUrl, importPath)
+		)
 	}
 
+	// Otherwise it refers to a package, which is not our concern.
 	return null
 }
 
 function extractImports(
 	sourceCode: string,
 	currentFilePath: string,
-	basePath: string | null
+	resolution: ModuleResolution
 ): Import[] {
 	const currentFileDir = path.dirname(currentFilePath)
 
@@ -211,7 +235,7 @@ function extractImports(
 			const absolutePath = resolveImportPath(
 				importPath,
 				currentFileDir,
-				basePath
+				resolution
 			)
 			if (!absolutePath) return null
 
@@ -259,6 +283,81 @@ function getAllFilesRecursive(dir: string): string[] {
 	})
 }
 
+/**
+ * Parses JSON with comments and trailing commas, the dialect tsconfig.json
+ * actually uses. A plain regex cannot do this: `//` occurs inside string
+ * values such as "$schema": "https://json.schemastore.org/tsconfig".
+ */
+function parseJsonc(text: string): unknown {
+	let result = ''
+	let inString = false
+	let inLineComment = false
+	let inBlockComment = false
+
+	for (let index = 0; index < text.length; index++) {
+		const char = text[index]
+		const next = text[index + 1]
+
+		if (inLineComment) {
+			if (char === '\n') {
+				inLineComment = false
+				result += char
+			}
+			continue
+		}
+
+		if (inBlockComment) {
+			if (char === '*' && next === '/') {
+				inBlockComment = false
+				index++
+			}
+			continue
+		}
+
+		if (inString) {
+			result += char
+			if (char === '\\') {
+				result += next ?? ''
+				index++
+			} else if (char === '"') {
+				inString = false
+			}
+			continue
+		}
+
+		if (char === '"') {
+			inString = true
+			result += char
+			continue
+		}
+
+		if (char === '/' && next === '/') {
+			inLineComment = true
+			index++
+			continue
+		}
+
+		if (char === '/' && next === '*') {
+			inBlockComment = true
+			index++
+			continue
+		}
+
+		// Drop a trailing comma before a closing brace or bracket.
+		if (char === '}' || char === ']') {
+			let cut = result.length
+			while (cut > 0 && /\s/.test(result[cut - 1])) cut--
+			if (cut > 0 && result[cut - 1] === ',') {
+				result = result.slice(0, cut - 1) + result.slice(cut)
+			}
+		}
+
+		result += char
+	}
+
+	return JSON.parse(result)
+}
+
 function findTsConfig(startPath: string): string | null {
 	let current = path.dirname(startPath)
 
@@ -273,33 +372,172 @@ function findTsConfig(startPath: string): string | null {
 	return null
 }
 
-/** Returns the absolute baseUrl from the nearest tsconfig.json, or null. */
-function readTsConfigBaseUrl(entryFile: string): string | null {
-	const tsConfigPath = findTsConfig(entryFile)
+/**
+ * Resolves an `extends` value. It may be a relative path (with or without the
+ * .json extension), an absolute path, a directory, or a package name such as
+ * `@tsconfig/node20`.
+ */
+function resolveExtendsTarget(value: string, fromDir: string): string | null {
+	const isPathLike =
+		value.startsWith('./') ||
+		value.startsWith('../') ||
+		path.isAbsolute(value)
 
-	if (!tsConfigPath) return null
+	if (isPathLike) {
+		const resolved = path.resolve(fromDir, value)
+		const candidates = [
+			resolved,
+			`${resolved}.json`,
+			path.join(resolved, 'tsconfig.json'),
+		]
+		return (
+			candidates.find(
+				(candidate) =>
+					fs.existsSync(candidate) && fs.statSync(candidate).isFile()
+			) ?? null
+		)
+	}
 
-	try {
-		const content = fs.readFileSync(tsConfigPath, 'utf8')
-		// Simple parsing without JSON5
-		const cleaned = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')
-		const config = JSON.parse(cleaned)
-		const baseUrl = config?.compilerOptions?.baseUrl
-		const tsConfigDir = path.dirname(tsConfigPath)
-
-		if (baseUrl) {
-			return path.resolve(tsConfigDir, baseUrl)
+	// Package name: let Node resolve it from node_modules.
+	for (const specifier of [value, path.posix.join(value, 'tsconfig.json')]) {
+		try {
+			return require.resolve(specifier, { paths: [fromDir] })
+		} catch {
+			// Try the next form.
 		}
-	} catch {
-		// Ignore parsing errors
 	}
 
 	return null
 }
 
+/** Turns a `paths` entry into a matcher with absolute targets. */
+function toPathMappings(
+	paths: Record<string, string[]>,
+	resolveFrom: string
+): PathMapping[] {
+	return Object.entries(paths).map(([pattern, targets]) => {
+		const star = pattern.indexOf('*')
+		return {
+			pattern,
+			prefix: star === -1 ? pattern : pattern.slice(0, star),
+			suffix: star === -1 ? '' : pattern.slice(star + 1),
+			isWildcard: star !== -1,
+			targets: (targets || []).map((target) =>
+				path.resolve(resolveFrom, target)
+			),
+		}
+	})
+}
+
+/**
+ * Reads a tsconfig.json and everything it extends. `extends` may be a single
+ * value or, since TypeScript 5.0, an array in which later entries win.
+ * baseUrl and paths are resolved against the file that declares them.
+ */
+function loadTsConfig(configPath: string, seen: Set<string>): ModuleResolution {
+	const empty: ModuleResolution = { baseUrl: null, paths: [] }
+
+	if (seen.has(configPath)) return empty
+	seen.add(configPath)
+
+	let config: {
+		extends?: string | string[]
+		compilerOptions?: {
+			baseUrl?: string
+			paths?: Record<string, string[]>
+		}
+	}
+
+	try {
+		config = parseJsonc(
+			fs.readFileSync(configPath, 'utf8')
+		) as typeof config
+	} catch {
+		// A config we cannot read contributes nothing.
+		return empty
+	}
+
+	const configDir = path.dirname(configPath)
+
+	// Inherited first, so the local file can override it.
+	let resolution = empty
+	const extendsList = Array.isArray(config.extends)
+		? config.extends
+		: config.extends
+			? [config.extends]
+			: []
+
+	for (const entry of extendsList) {
+		const target = resolveExtendsTarget(entry, configDir)
+		if (!target) continue
+		const inherited = loadTsConfig(target, seen)
+		resolution = {
+			baseUrl: inherited.baseUrl ?? resolution.baseUrl,
+			paths: inherited.paths.length ? inherited.paths : resolution.paths,
+		}
+	}
+
+	const ownBaseUrl = config.compilerOptions?.baseUrl
+	const baseUrl = ownBaseUrl
+		? path.resolve(configDir, ownBaseUrl)
+		: resolution.baseUrl
+
+	const ownPaths = config.compilerOptions?.paths
+	// Since TypeScript 4.1 paths work without baseUrl, relative to the config.
+	const paths = ownPaths
+		? toPathMappings(ownPaths, baseUrl ?? configDir)
+		: resolution.paths
+
+	return { baseUrl, paths }
+}
+
+/** Module resolution settings from the nearest tsconfig.json. */
+function readModuleResolution(entryFile: string): ModuleResolution {
+	const tsConfigPath = findTsConfig(entryFile)
+	if (!tsConfigPath) return { baseUrl: null, paths: [] }
+	return loadTsConfig(tsConfigPath, new Set())
+}
+
+/**
+ * Applies the `paths` patterns to a specifier. An exact pattern wins over a
+ * wildcard, and among wildcards the longest prefix wins — the same order
+ * TypeScript uses.
+ */
+function applyPathMappings(
+	specifier: string,
+	mappings: PathMapping[]
+): string[] {
+	for (const mapping of mappings) {
+		if (!mapping.isWildcard && mapping.pattern === specifier) {
+			return mapping.targets
+		}
+	}
+
+	let best: PathMapping | null = null
+	for (const mapping of mappings) {
+		if (!mapping.isWildcard) continue
+		if (!specifier.startsWith(mapping.prefix)) continue
+		if (!specifier.endsWith(mapping.suffix)) continue
+		if (specifier.length < mapping.prefix.length + mapping.suffix.length) {
+			continue
+		}
+		if (!best || mapping.prefix.length > best.prefix.length) {
+			best = mapping
+		}
+	}
+
+	if (!best) return []
+
+	const matched = specifier.slice(
+		best.prefix.length,
+		specifier.length - best.suffix.length
+	)
+	return best.targets.map((target) => target.replace('*', matched))
+}
+
 function collectUsedFiles(
 	entryFiles: string[],
-	basePath: string | null
+	resolution: ModuleResolution
 ): Set<string> {
 	const visited = new Set<string>()
 	const queue = entryFiles.map((file) => path.resolve(file))
@@ -311,7 +549,7 @@ function collectUsedFiles(
 		visited.add(current)
 
 		const sourceCode = fs.readFileSync(current, 'utf8')
-		for (const imp of extractImports(sourceCode, current, basePath)) {
+		for (const imp of extractImports(sourceCode, current, resolution)) {
 			if (!visited.has(imp.absolutePath)) {
 				queue.push(imp.absolutePath)
 			}
@@ -337,8 +575,8 @@ export function scanUnusedFiles(
 	}
 
 	const scanDir = path.dirname(absoluteEntry)
-	// Absolute imports are only resolved when tsconfig.json defines a baseUrl.
-	const basePath = readTsConfigBaseUrl(absoluteEntry)
+	// Bare specifiers only resolve through tsconfig baseUrl/paths.
+	const resolution = readModuleResolution(absoluteEntry)
 	// Resolve ignore paths relative to current working directory
 	const ignorePaths = (options.ignore || []).map((p) => path.resolve(p))
 
@@ -358,7 +596,7 @@ export function scanUnusedFiles(
 
 	const usedFiles = collectUsedFiles(
 		[absoluteEntry, ...extraEntryFiles],
-		basePath
+		resolution
 	)
 	const unusedFiles = allFiles.filter((file) => !usedFiles.has(file))
 

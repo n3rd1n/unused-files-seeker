@@ -92,7 +92,7 @@ prompts, and in a non-interactive one it refuses unless `--yes` is passed.
 
 - ✅ Recursive scanning from the entry file
 - ✅ Follows `import`, `export ... from`, dynamic `import()` and `require()`
-- ✅ Respects `baseUrl` from `tsconfig.json`
+- ✅ Respects `baseUrl`, `paths` and `extends` from `tsconfig.json`
 - ✅ Supports `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`
 - ✅ Ignores `node_modules` and hidden folders
 - ✅ Test files and `.d.ts` files are never deletion candidates
@@ -117,20 +117,57 @@ that is only imported by a test is correctly recognised as used, and an ambient
 
 ## tsconfig.json Support
 
-The tool respects the `baseUrl` from your `tsconfig.json`:
+The tool reads the nearest `tsconfig.json` above your entry file and follows
+its module resolution.
+
+### baseUrl
+
+```json
+{ "compilerOptions": { "baseUrl": "src" } }
+```
+
+Absolute imports like `import { Button } from 'components/Button'` are
+resolved correctly.
+
+### paths
 
 ```json
 {
   "compilerOptions": {
-    "baseUrl": "src"
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@ui/*": ["./src/components/ui/*"]
+    }
   }
 }
 ```
 
-This way, absolute imports like `import { Button } from 'components/Button'` are resolved correctly.
+Aliases such as `@/hooks/useAuth` resolve to the file they point at, so
+alias-imported files are no longer reported as unused. Pattern precedence
+follows TypeScript: an exact pattern beats a wildcard, and among wildcards the
+longest prefix wins. Since TypeScript 4.1, `paths` also works without a
+`baseUrl`, resolved relative to the config file.
 
-Without a `baseUrl`, bare specifiers are treated as package imports and are not
-resolved against your source directory.
+### extends
+
+`extends` is followed, including the array form from TypeScript 5.0 (later
+entries win) and package names such as `@tsconfig/node20`. `baseUrl` and
+`paths` are resolved relative to the file that declares them, matching
+TypeScript. Circular `extends` chains are detected.
+
+Config files may contain comments and trailing commas.
+
+### Without a tsconfig
+
+Bare specifiers are treated as package imports and are not resolved against
+your source directory.
+
+## Known Limitation
+
+The scan directory is the directory of the entry file. With an entry like
+`src/app/page.tsx`, only `src/app` is scanned — point the tool at an entry
+higher up (e.g. `src/index.ts`) to cover the whole tree.
 
 ## Development
 

@@ -1,0 +1,11 @@
+{
+  // the $schema value contains a // sequence inside a string
+  "$schema": "https://json.schemastore.org/tsconfig",
+  /* block comment */
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"], // trailing comment
+    },
+  },
+}

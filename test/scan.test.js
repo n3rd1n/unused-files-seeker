@@ -13,8 +13,8 @@ function fixture(name, ...rest) {
 }
 
 /** Scan a fixture and return unused files relative to the fixture root, sorted. */
-function unusedIn(name, options) {
-	const root = fixture(name)
+function unusedIn(name, options, subDir = '') {
+	const root = path.join(fixture(name), subDir)
 	const result = scanUnusedFiles(path.join(root, 'App.ts'), options)
 	return result.unusedFiles.map((f) => path.relative(root, f)).sort()
 }
@@ -75,6 +75,43 @@ test('without baseUrl, bare specifiers are not resolved against the scan dir', (
 	assert.deepStrictEqual(unusedIn('no-baseurl'), [
 		path.join('shadow', 'y.ts'),
 	])
+})
+
+test('tsconfig paths map bare specifiers to local files', () => {
+	// Also covers precedence: '@/components/*' must win over '@/*' for
+	// '@/components/Button', and the exact pattern '~utils' over any wildcard.
+	assert.deepStrictEqual(unusedIn('paths', {}, 'src'), ['orphan.ts'])
+})
+
+test('paths work without a baseUrl, relative to the tsconfig', () => {
+	assert.deepStrictEqual(unusedIn('paths-no-baseurl', {}, 'src'), [
+		'orphan.ts',
+	])
+})
+
+test('tsconfig extends inherits baseUrl and paths', () => {
+	assert.deepStrictEqual(unusedIn('extends', {}, 'src'), ['orphan.ts'])
+})
+
+test('extends accepts an array, where the last entry wins', () => {
+	assert.deepStrictEqual(unusedIn('extends-array', {}, 'src'), ['orphan.ts'])
+})
+
+test('extends resolves a package name from node_modules', () => {
+	// The base config lives in node_modules and its baseUrl is resolved
+	// relative to that file, not to the inheriting tsconfig.
+	assert.deepStrictEqual(unusedIn('extends-package', {}, 'src'), [
+		'orphan.ts',
+	])
+})
+
+test('circular extends terminates', () => {
+	assert.deepStrictEqual(unusedIn('extends-cycle', {}, 'src'), ['orphan.ts'])
+})
+
+test('tsconfig with comments, trailing commas and // inside a string', () => {
+	// The old regex-based comment stripping broke on the $schema URL.
+	assert.deepStrictEqual(unusedIn('jsonc', {}, 'src'), ['orphan.ts'])
 })
 
 test('--ignore excludes paths and reports them separately', () => {

@@ -23,3 +23,6 @@ web-build/
 yarn-debug.log*
 yarn-error.log*
 *.tgz
+
+# Fixtures need a node_modules to test tsconfig `extends` from a package.
+!test/fixtures/**/node_modules/
