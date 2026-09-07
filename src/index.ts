@@ -11,14 +11,27 @@ type Import = {
 }
 
 type ScanResult = {
+	/** Deletion candidates: every source file below the scan directory. */
 	allFiles: string[]
+	/** Every file reachable from the entry points (may include extra entries). */
 	usedFiles: Set<string>
 	unusedFiles: string[]
 	ignoredFiles: string[]
+	/**
+	 * Files traversed as additional entry points but never reported as unused:
+	 * test files and declaration files. They are usually not imported by the
+	 * application graph, yet deleting them would break the project.
+	 */
+	extraEntryFiles: string[]
 }
 
 type ScanOptions = {
 	ignore?: string[]
+}
+
+type DeleteResult = {
+	deleted: string[]
+	failed: string[]
 }
 
 // ============ Parser Setup ============
@@ -28,21 +41,71 @@ tsParser.setLanguage(TypeScript.tsx)
 
 // ============ Pure Functions ============
 
-function getImportPath(node: Parser.SyntaxNode): string | null {
-	const sourceNode = node.childForFieldName('source')
-	return sourceNode ? sourceNode.text.slice(1, -1) : null
+function getFileExtensions(): string[] {
+	return ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']
 }
 
-function getImportNodes(rootNode: Parser.SyntaxNode): Parser.SyntaxNode[] {
-	return rootNode.descendantsOfType('import_statement')
+function isTestFile(filePath: string): boolean {
+	return /\.(spec|test)\.[cm]?[jt]sx?$/.test(path.basename(filePath))
+}
+
+function isDeclarationFile(filePath: string): boolean {
+	return /\.d\.[cm]?ts$/.test(path.basename(filePath))
 }
 
 function isRelativeImport(importPath: string): boolean {
 	return importPath.startsWith('./') || importPath.startsWith('../')
 }
 
-function getFileExtensions(): string[] {
-	return ['.ts', '.tsx', '.js', '.jsx']
+/** Strips the surrounding quotes from a tree-sitter string literal node. */
+function getStringLiteralValue(node: Parser.SyntaxNode | null): string | null {
+	if (!node || node.text.length < 2) return null
+	return node.text.slice(1, -1)
+}
+
+/**
+ * Collects every module specifier that loads another file:
+ * `import ... from '…'`, `import '…'`, `export ... from '…'`,
+ * `export * from '…'`, `import('…')` and `require('…')`.
+ */
+function getImportSpecifiers(rootNode: Parser.SyntaxNode): string[] {
+	const specifiers: string[] = []
+
+	// `import ... from '…'` and bare `import '…'`
+	for (const node of rootNode.descendantsOfType('import_statement')) {
+		const specifier = getStringLiteralValue(
+			node.childForFieldName('source')
+		)
+		if (specifier) specifiers.push(specifier)
+	}
+
+	// `export { x } from '…'`, `export * from '…'`, `export * as ns from '…'`
+	for (const node of rootNode.descendantsOfType('export_statement')) {
+		const specifier = getStringLiteralValue(
+			node.childForFieldName('source')
+		)
+		if (specifier) specifiers.push(specifier)
+	}
+
+	// `import('…')` and `require('…')`
+	for (const node of rootNode.descendantsOfType('call_expression')) {
+		const callee = node.childForFieldName('function')
+		if (!callee) continue
+
+		const isDynamicImport = callee.type === 'import'
+		const isRequire =
+			callee.type === 'identifier' && callee.text === 'require'
+		if (!isDynamicImport && !isRequire) continue
+
+		const firstArgument =
+			node.childForFieldName('arguments')?.namedChild(0) ?? null
+		if (firstArgument?.type !== 'string') continue
+
+		const specifier = getStringLiteralValue(firstArgument)
+		if (specifier) specifiers.push(specifier)
+	}
+
+	return specifiers
 }
 
 function resolveImportPath(
@@ -50,13 +113,11 @@ function resolveImportPath(
 	currentFileDir: string,
 	basePath: string | null
 ): string | null {
-	const baseDir = isRelativeImport(importPath)
-		? currentFileDir
-		: basePath || currentFileDir
+	if (!isRelativeImport(importPath) && !basePath) return null
 
 	const resolvedBase = isRelativeImport(importPath)
 		? path.resolve(currentFileDir, importPath)
-		: path.resolve(baseDir, importPath)
+		: path.resolve(basePath as string, importPath)
 
 	// Direct match with extension
 	if (fs.existsSync(resolvedBase) && fs.statSync(resolvedBase).isFile()) {
@@ -88,18 +149,12 @@ function extractImports(
 	basePath: string | null
 ): Import[] {
 	const tree = tsParser.parse(sourceCode)
-	const importNodes = getImportNodes(tree.rootNode)
 	const currentFileDir = path.dirname(currentFilePath)
 
-	return importNodes
-		.map((node) => {
-			const importPath = getImportPath(node)
-			if (!importPath || (!isRelativeImport(importPath) && !basePath))
-				return null
-
-			// Ignore external packages
-			if (!isRelativeImport(importPath) && !basePath) return null
-
+	return getImportSpecifiers(tree.rootNode)
+		.map((importPath) => {
+			// Bare specifiers only resolve locally when a baseUrl is configured;
+			// otherwise they refer to packages and are not our concern.
 			const absolutePath = resolveImportPath(
 				importPath,
 				currentFileDir,
@@ -112,20 +167,18 @@ function extractImports(
 		.filter((imp): imp is Import => imp !== null)
 }
 
-function shouldIgnore(filePath: string, ignorePaths: string[]): boolean {
-	return ignorePaths.some((ignorePath) => {
-		const absoluteIgnore = path.resolve(ignorePath)
-		return (
-			filePath === absoluteIgnore ||
-			filePath.startsWith(absoluteIgnore + path.sep)
-		)
-	})
+function shouldIgnore(
+	filePath: string,
+	resolvedIgnorePaths: string[]
+): boolean {
+	return resolvedIgnorePaths.some(
+		(ignorePath) =>
+			filePath === ignorePath ||
+			filePath.startsWith(ignorePath + path.sep)
+	)
 }
 
-function getAllFilesRecursive(
-	dir: string,
-	ignorePaths: string[] = []
-): string[] {
+function getAllFilesRecursive(dir: string): string[] {
 	if (!fs.existsSync(dir)) return []
 
 	const entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -134,27 +187,18 @@ function getAllFilesRecursive(
 	return entries.flatMap((entry) => {
 		const fullPath = path.join(dir, entry.name)
 
-		// Check ignore list
-		if (shouldIgnore(fullPath, ignorePaths)) {
-			return []
-		}
-
 		if (entry.isDirectory()) {
 			// Ignore node_modules and hidden folders
 			if (entry.name === 'node_modules' || entry.name.startsWith('.')) {
 				return []
 			}
-			return getAllFilesRecursive(fullPath, ignorePaths)
+			return getAllFilesRecursive(fullPath)
 		}
 
 		if (
 			entry.isFile() &&
 			extensions.some((ext) => entry.name.endsWith(ext))
 		) {
-			// Ignore test files (.spec.* and .test.*)
-			if (/\.(spec|test)\.[jt]sx?$/.test(entry.name)) {
-				return []
-			}
 			return [fullPath]
 		}
 
@@ -176,7 +220,8 @@ function findTsConfig(startPath: string): string | null {
 	return null
 }
 
-function readTsConfig(entryFile: string): string | null {
+/** Returns the absolute baseUrl from the nearest tsconfig.json, or null. */
+function readTsConfigBaseUrl(entryFile: string): string | null {
 	const tsConfigPath = findTsConfig(entryFile)
 
 	if (!tsConfigPath) return null
@@ -200,24 +245,25 @@ function readTsConfig(entryFile: string): string | null {
 }
 
 function collectUsedFiles(
-	entryFile: string,
-	basePath: string | null,
-	visited: Set<string> = new Set()
+	entryFiles: string[],
+	basePath: string | null
 ): Set<string> {
-	const absoluteEntry = path.resolve(entryFile)
+	const visited = new Set<string>()
+	const queue = entryFiles.map((file) => path.resolve(file))
 
-	if (visited.has(absoluteEntry) || !fs.existsSync(absoluteEntry)) {
-		return visited
+	while (queue.length > 0) {
+		const current = queue.pop() as string
+
+		if (visited.has(current) || !fs.existsSync(current)) continue
+		visited.add(current)
+
+		const sourceCode = fs.readFileSync(current, 'utf8')
+		for (const imp of extractImports(sourceCode, current, basePath)) {
+			if (!visited.has(imp.absolutePath)) {
+				queue.push(imp.absolutePath)
+			}
+		}
 	}
-
-	visited.add(absoluteEntry)
-
-	const sourceCode = fs.readFileSync(absoluteEntry, 'utf8')
-	const imports = extractImports(sourceCode, absoluteEntry, basePath)
-
-	imports.forEach((imp) => {
-		collectUsedFiles(imp.absolutePath, basePath, visited)
-	})
 
 	return visited
 }
@@ -229,33 +275,60 @@ export function scanUnusedFiles(
 	options: ScanOptions = {}
 ): ScanResult {
 	const absoluteEntry = path.resolve(entryFile)
+
+	if (!fs.existsSync(absoluteEntry)) {
+		throw new Error(`Entry file not found: ${entryFile}`)
+	}
+	if (!fs.statSync(absoluteEntry).isFile()) {
+		throw new Error(`Entry path is not a file: ${entryFile}`)
+	}
+
 	const scanDir = path.dirname(absoluteEntry)
-	// Use tsconfig baseUrl if available, otherwise fallback to entry file directory
-	const basePath = readTsConfig(absoluteEntry) || scanDir
+	// Absolute imports are only resolved when tsconfig.json defines a baseUrl.
+	const basePath = readTsConfigBaseUrl(absoluteEntry)
 	// Resolve ignore paths relative to current working directory
 	const ignorePaths = (options.ignore || []).map((p) => path.resolve(p))
 
-	const allFilesWithoutIgnore = getAllFilesRecursive(scanDir, [])
-	const allFiles = getAllFilesRecursive(scanDir, ignorePaths)
-	const ignoredFiles = allFilesWithoutIgnore.filter(
-		(file) => !allFiles.includes(file)
+	const everyFile = getAllFilesRecursive(scanDir)
+	const ignoredFiles = everyFile.filter((file) =>
+		shouldIgnore(file, ignorePaths)
 	)
-	const usedFiles = collectUsedFiles(absoluteEntry, basePath)
+	const ignoredSet = new Set(ignoredFiles)
+
+	const candidates = everyFile.filter((file) => !ignoredSet.has(file))
+	// Tests and declaration files seed the graph but are never deletion candidates.
+	const extraEntryFiles = candidates.filter(
+		(file) => isTestFile(file) || isDeclarationFile(file)
+	)
+	const extraEntrySet = new Set(extraEntryFiles)
+	const allFiles = candidates.filter((file) => !extraEntrySet.has(file))
+
+	const usedFiles = collectUsedFiles(
+		[absoluteEntry, ...extraEntryFiles],
+		basePath
+	)
 	const unusedFiles = allFiles.filter((file) => !usedFiles.has(file))
 
-	return { allFiles, usedFiles, unusedFiles, ignoredFiles }
+	return { allFiles, usedFiles, unusedFiles, ignoredFiles, extraEntryFiles }
 }
 
 export function deleteFiles(
 	files: string[],
 	formatPath: (p: string) => string = (p) => p
-): void {
+): DeleteResult {
+	const deleted: string[] = []
+	const failed: string[] = []
+
 	files.forEach((file) => {
 		try {
 			fs.unlinkSync(file)
+			deleted.push(file)
 			console.info(`🗑️  Deleted: ${formatPath(file)}`)
-		} catch (error) {
+		} catch {
+			failed.push(file)
 			console.error(`❌ Error deleting: ${formatPath(file)}`)
 		}
 	})
+
+	return { deleted, failed }
 }

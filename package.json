@@ -1,6 +1,6 @@
 {
 	"name": "@n3rd1n/unused-files-seeker",
-	"version": "2.0.1",
+	"version": "3.0.0",
 	"description": "A tool to find unused files in JavaScript/TypeScript projects",
 	"main": "dist/index.js",
 	"bin": {
@@ -11,15 +11,15 @@
 		"prepublishOnly": "npm run build",
 		"release": "npm publish --access public",
 		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,md}\"",
-		"test": "node dist/cli.js test-project_2/App.tsx --ignore apiAuto"
+		"test": "npm run build && node --test test/*.test.js"
 	},
 	"keywords": [
-    	"unused",
-    	"files",
-    	"seeker",
-    	"typescript",
-    	"javascript",
-    	"cleanup"
+		"unused",
+		"files",
+		"seeker",
+		"typescript",
+		"javascript",
+		"cleanup"
 	],
 	"author": "n3rd1n",
 	"license": "MIT",
@@ -28,16 +28,16 @@
 		"README.md"
 	],
 	"engines": {
-		"node": ">=14.0.0"
+		"node": ">=18.0.0"
 	},
-  	"dependencies": {
-    	"tree-sitter": "^0.21.1",
-    	"tree-sitter-typescript": "^0.23.2"
-  	},
-  	"devDependencies": {
-    	"@types/node": "^24.9.1",
-    	"typescript": "^5.0.0"
-  	},
+	"dependencies": {
+		"tree-sitter": "^0.21.1",
+		"tree-sitter-typescript": "^0.23.2"
+	},
+	"devDependencies": {
+		"@types/node": "^24.9.1",
+		"typescript": "^5.0.0"
+	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/n3rd1n/unused-files-seeker.git"

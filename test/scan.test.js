@@ -1,0 +1,124 @@
+const test = require('node:test')
+const assert = require('node:assert')
+const path = require('node:path')
+const fs = require('node:fs')
+const os = require('node:os')
+
+const { scanUnusedFiles, deleteFiles } = require('../dist/index.js')
+
+const FIXTURES = path.join(__dirname, 'fixtures')
+
+function fixture(name, ...rest) {
+	return path.join(FIXTURES, name, ...rest)
+}
+
+/** Scan a fixture and return unused files relative to the fixture root, sorted. */
+function unusedIn(name, options) {
+	const root = fixture(name)
+	const result = scanUnusedFiles(path.join(root, 'App.ts'), options)
+	return result.unusedFiles.map((f) => path.relative(root, f)).sort()
+}
+
+function relative(root, files) {
+	return [...files].map((f) => path.relative(root, f)).sort()
+}
+
+test('re-exports (barrel files) count as usage', () => {
+	assert.deepStrictEqual(unusedIn('barrel'), ['orphan.ts'])
+})
+
+test('dynamic import() and require() count as usage', () => {
+	// member-only.ts is referenced solely via foo.require(...), which is not a
+	// module load, so it stays unused on purpose.
+	assert.deepStrictEqual(unusedIn('dynamic'), [
+		'member-only.ts',
+		'orphan.ts',
+	])
+})
+
+test('circular imports terminate and resolve', () => {
+	assert.deepStrictEqual(unusedIn('cycle'), ['orphan.ts'])
+})
+
+test('files imported only by tests are not reported as unused', () => {
+	const root = fixture('tests-traversal')
+	const result = scanUnusedFiles(path.join(root, 'App.ts'))
+
+	assert.deepStrictEqual(
+		result.unusedFiles.map((f) => path.relative(root, f)),
+		['orphan.ts']
+	)
+	// The test file itself is an extra entry point, never a deletion candidate.
+	assert.deepStrictEqual(relative(root, result.extraEntryFiles), [
+		'App.test.ts',
+	])
+	assert.ok(!relative(root, result.allFiles).includes('App.test.ts'))
+})
+
+test('declaration files are traversed but never reported as unused', () => {
+	const root = fixture('declarations')
+	const result = scanUnusedFiles(path.join(root, 'App.ts'))
+
+	assert.deepStrictEqual(
+		result.unusedFiles.map((f) => path.relative(root, f)),
+		['orphan.ts']
+	)
+	assert.ok(relative(root, result.extraEntryFiles).includes('global.d.ts'))
+})
+
+test('tsconfig baseUrl resolves absolute imports', () => {
+	assert.deepStrictEqual(unusedIn('baseurl'), ['orphan.ts'])
+})
+
+test('without baseUrl, bare specifiers are not resolved against the scan dir', () => {
+	// 'shadow/y' is a package specifier here, not a local path.
+	assert.deepStrictEqual(unusedIn('no-baseurl'), [
+		path.join('shadow', 'y.ts'),
+	])
+})
+
+test('--ignore excludes paths and reports them separately', () => {
+	const root = fixture('ignore')
+	const result = scanUnusedFiles(path.join(root, 'App.ts'), {
+		ignore: [path.join(root, 'legacy')],
+	})
+
+	assert.deepStrictEqual(
+		result.unusedFiles.map((f) => path.relative(root, f)),
+		['orphan.ts']
+	)
+	assert.deepStrictEqual(relative(root, result.ignoredFiles), [
+		path.join('legacy', 'old.ts'),
+	])
+	assert.ok(!relative(root, result.allFiles).includes(path.join('legacy', 'old.ts')))
+})
+
+test('resolves and collects .mts/.cjs/.mjs files', () => {
+	assert.deepStrictEqual(unusedIn('extensions'), ['orphan.mjs'])
+})
+
+test('a missing entry file throws instead of reporting everything as unused', () => {
+	assert.throws(
+		() => scanUnusedFiles(fixture('barrel', 'does-not-exist.ts')),
+		/Entry file not found/
+	)
+})
+
+test('a directory as entry file throws', () => {
+	assert.throws(() => scanUnusedFiles(fixture('barrel')), /not a file/)
+})
+
+test('deleteFiles removes files and reports failures without throwing', () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ufs-delete-'))
+	const target = path.join(dir, 'gone.ts')
+	fs.writeFileSync(target, 'export const gone = 1')
+
+	const missing = path.join(dir, 'never-existed.ts')
+	const result = deleteFiles([target, missing])
+
+	assert.strictEqual(fs.existsSync(target), false)
+	assert.deepStrictEqual(result.deleted, [target])
+	assert.deepStrictEqual(result.failed, [missing])
+
+	fs.rmSync(dir, { recursive: true, force: true })
+})

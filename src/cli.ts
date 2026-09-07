@@ -80,15 +80,25 @@ function main(): void {
 	}
 	console.info('')
 
-	const { allFiles, usedFiles, unusedFiles, ignoredFiles } = scanUnusedFiles(
-		entryFile,
-		{ ignore: ignorePaths }
-	)
+	let result
+	try {
+		result = scanUnusedFiles(entryFile, { ignore: ignorePaths })
+	} catch (error) {
+		console.error(`❌ ${(error as Error).message}\n`)
+		process.exit(1)
+	}
+
+	const { allFiles, unusedFiles, ignoredFiles, extraEntryFiles } = result
 
 	console.info(`📊 Statistics:`)
 	console.info(`   All files:      ${allFiles.length}`)
-	console.info(`   Used files:     ${usedFiles.size}`)
+	console.info(`   Used files:     ${allFiles.length - unusedFiles.length}`)
 	console.info(`   Unused:         ${unusedFiles.length}`)
+	if (extraEntryFiles.length > 0) {
+		console.info(
+			`   Extra entries:  ${extraEntryFiles.length} (tests, .d.ts)`
+		)
+	}
 	if (ignoredFiles.length > 0) {
 		console.info(`   Ignored:        ${ignoredFiles.length}`)
 	}
@@ -105,7 +115,11 @@ function main(): void {
 
 	if (shouldDelete) {
 		console.info('🗑️  Deleting unused files...\n')
-		deleteFiles(unusedFiles, toRelativePath)
+		const { failed } = deleteFiles(unusedFiles, toRelativePath)
+		if (failed.length > 0) {
+			console.error(`\n❌ Failed to delete ${failed.length} file(s).\n`)
+			process.exit(1)
+		}
 		console.info('\n✅ Done!')
 	} else {
 		console.info('💡 Tip: Use --delete to remove these files.\n')
