@@ -1,48 +1,58 @@
 {
-	"name": "@n3rd1n/unused-files-seeker",
-	"version": "4.0.0",
-	"description": "A tool to find unused files in JavaScript/TypeScript projects",
-	"main": "dist/index.js",
-	"bin": {
-		"unused-files-seeker": "dist/cli.js"
-	},
-	"scripts": {
-		"build": "tsc",
-		"prepublishOnly": "npm run build",
-		"release": "npm publish --access public",
-		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,md}\"",
-		"test": "npm run build && node --test test/*.test.js"
-	},
-	"keywords": [
-		"unused",
-		"files",
-		"seeker",
-		"typescript",
-		"javascript",
-		"cleanup"
-	],
-	"author": "n3rd1n",
-	"license": "MIT",
-	"files": [
-		"dist/**/*",
-		"README.md"
-	],
-	"engines": {
-		"node": "^20.19.0 || >=22.12.0"
-	},
-	"devDependencies": {
-		"@types/node": "^24.9.1",
-		"typescript": "^5.0.0"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/n3rd1n/unused-files-seeker.git"
-	},
-	"bugs": {
-		"url": "https://github.com/n3rd1n/unused-files-seeker/issues"
-	},
-	"homepage": "https://github.com/n3rd1n/unused-files-seeker#readme",
-	"dependencies": {
-		"oxc-parser": "^0.148.0"
-	}
+  "name": "@n3rd1n/unused-files-seeker",
+  "version": "4.1.0",
+  "description": "A tool to find unused files in JavaScript/TypeScript projects",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "unused-files-seeker": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm test",
+    "release": "npm publish --access public",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "npm run build && node --test test/scan.test.js test/cli.test.js"
+  },
+  "keywords": [
+    "unused",
+    "files",
+    "seeker",
+    "typescript",
+    "javascript",
+    "cleanup"
+  ],
+  "author": "n3rd1n",
+  "license": "MIT",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "dependencies": {
+    "oxc-parser": "^0.148.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "prettier": "^3.9.6",
+    "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n3rd1n/unused-files-seeker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/n3rd1n/unused-files-seeker/issues"
+  },
+  "homepage": "https://github.com/n3rd1n/unused-files-seeker#readme"
 }

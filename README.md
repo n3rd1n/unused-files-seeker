@@ -1,5 +1,9 @@
 # @n3rd1n/unused-files-seeker
 
+[![CI](https://github.com/n3rd1n/unused-files-seeker/actions/workflows/ci.yml/badge.svg)](https://github.com/n3rd1n/unused-files-seeker/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@n3rd1n/unused-files-seeker)](https://www.npmjs.com/package/@n3rd1n/unused-files-seeker)
+[![license](https://img.shields.io/npm/l/@n3rd1n/unused-files-seeker)](./LICENSE)
+
 🔍 Find unused files in your TypeScript/JavaScript project.
 
 ## Requirements
@@ -128,6 +132,31 @@ This way, absolute imports like `import { Button } from 'components/Button'` are
 Without a `baseUrl`, bare specifiers are treated as package imports and are not
 resolved against your source directory.
 
+## Development
+
+```bash
+npm install
+npm test        # builds, then runs the node:test suite
+npm run format  # prettier
+```
+
+Tests live in `test/`, with one fixture project per behaviour in
+`test/fixtures/`. `test/scan.test.js` covers the scanner API and
+`test/cli.test.js` drives the built CLI as a child process.
+
+### Releasing
+
+Releases are published from CI with npm provenance. Bump the version,
+push, then push a matching tag:
+
+```bash
+npm version minor          # or patch / major
+git push && git push --tags
+```
+
+The release workflow verifies that the tag matches `package.json`,
+runs the build and the test suite, and publishes to npm.
+
 ## License
 
-MIT
+[MIT](./LICENSE) © Nathanael Erdin

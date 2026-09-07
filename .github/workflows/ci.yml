@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Full Node range on Linux; the other platforms guard the native
+        # oxc-parser bindings, so one Node version each is enough.
+        os: [ubuntu-latest]
+        node: ['20.19', '22.12', '24']
+        include:
+          - os: macos-latest
+            node: '22.12'
+          - os: windows-latest
+            node: '22.12'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check formatting
+        run: npx prettier --check "src/**/*.{ts,tsx,js,jsx,json,md}"
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
+
+      - run: npm test
+
+      - name: Verify package contents
+        run: npm pack --dry-run
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'

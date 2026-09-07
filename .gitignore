@@ -22,3 +22,4 @@ tags
 web-build/
 yarn-debug.log*
 yarn-error.log*
+*.tgz
