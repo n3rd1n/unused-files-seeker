@@ -183,16 +183,14 @@ Tests live in `test/`, with one fixture project per behaviour in
 
 ### Releasing
 
-Releases are published from CI with npm provenance. Bump the version,
-push, then push a matching tag:
+Published manually. `prepublishOnly` builds and runs the full test suite
+first, so a failing tree cannot be published.
 
 ```bash
-npm version minor          # or patch / major
+npm version minor          # or patch / major — commits and tags
 git push && git push --tags
+npm publish --access public
 ```
-
-The release workflow verifies that the tag matches `package.json`,
-runs the build and the test suite, and publishes to npm.
 
 ## License
 
