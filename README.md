@@ -34,11 +34,28 @@ npx @n3rd1n/unused-files-seeker src/App.tsx --delete
 # Delete without the prompt (for scripts)
 npx @n3rd1n/unused-files-seeker src/App.tsx --delete --yes
 
+# Scan the whole source tree, not just the entry file's folder
+npx @n3rd1n/unused-files-seeker src/app/page.tsx --root src
+
 # Machine-readable report
 npx @n3rd1n/unused-files-seeker src/App.tsx --json > report.json
 
 # Fail the build when unused files remain
 npx @n3rd1n/unused-files-seeker src/App.tsx --fail-on-found
+```
+
+## Scan Scope
+
+By default the scan directory is the **entry file's directory**. That is fine
+for an entry at the top of your source tree, but too narrow when the entry
+sits in a subfolder:
+
+```bash
+# only src/app is scanned
+npx @n3rd1n/unused-files-seeker src/app/page.tsx
+
+# the whole tree is scanned, starting the graph at src/app/page.tsx
+npx @n3rd1n/unused-files-seeker src/app/page.tsx --root src
 ```
 
 ## Options
@@ -49,6 +66,7 @@ npx @n3rd1n/unused-files-seeker src/App.tsx --fail-on-found
 | `-y`, `--yes` | Skip the confirmation prompt for `--delete`. |
 | `--json` | Print the result as JSON (absolute paths) on stdout. |
 | `--fail-on-found` | Exit with code 1 when unused files remain. |
+| `--root <dir>` | Directory to scan. Defaults to the entry file's folder. |
 | `--ignore <path>` | Ignore a file or folder. Can be used multiple times. |
 | `-h`, `--help` | Show help. |
 | `-v`, `--version` | Show the version. |
@@ -90,7 +108,7 @@ prompts, and in a non-interactive one it refuses unless `--yes` is passed.
 
 ## Features
 
-- ✅ Recursive scanning from the entry file
+- ✅ Recursive scanning from the entry file, with a configurable `--root`
 - ✅ Follows `import`, `export ... from`, dynamic `import()` and `require()`
 - ✅ Respects `baseUrl`, `paths` and `extends` from `tsconfig.json`
 - ✅ Supports `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`
@@ -162,12 +180,6 @@ Config files may contain comments and trailing commas.
 
 Bare specifiers are treated as package imports and are not resolved against
 your source directory.
-
-## Known Limitation
-
-The scan directory is the directory of the entry file. With an entry like
-`src/app/page.tsx`, only `src/app` is scanned — point the tool at an entry
-higher up (e.g. `src/index.ts`) to cover the whole tree.
 
 ## Development
 

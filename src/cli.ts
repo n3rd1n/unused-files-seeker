@@ -13,6 +13,7 @@ type ParsedArgs = {
 	assumeYes: boolean
 	json: boolean
 	failOnFound: boolean
+	root: string | null
 	showHelp: boolean
 	showVersion: boolean
 	ignorePaths: string[]
@@ -29,6 +30,7 @@ function parseArgs(args: string[]): ParsedArgs {
 	let failOnFound = false
 	let showHelp = false
 	let showVersion = false
+	let root: string | null = null
 
 	for (let index = 0; index < args.length; index++) {
 		const arg = args[index]
@@ -44,6 +46,20 @@ function parseArgs(args: string[]): ParsedArgs {
 
 		if (arg.startsWith('--ignore=')) {
 			ignorePaths.push(arg.slice('--ignore='.length))
+			continue
+		}
+
+		if (arg === '--root') {
+			const value = args[index + 1]
+			if (value && !value.startsWith('-')) {
+				root = value
+				index++
+			}
+			continue
+		}
+
+		if (arg.startsWith('--root=')) {
+			root = arg.slice('--root='.length)
 			continue
 		}
 
@@ -72,6 +88,7 @@ function parseArgs(args: string[]): ParsedArgs {
 		assumeYes,
 		json,
 		failOnFound,
+		root,
 		showHelp,
 		showVersion,
 		ignorePaths,
@@ -104,6 +121,7 @@ Examples:
   npx @n3rd1n/unused-files-seeker src/index.ts --delete
   npx @n3rd1n/unused-files-seeker src/App.tsx --ignore src/utils --ignore src/types
   npx @n3rd1n/unused-files-seeker src/App.tsx --ignore=src/legacy
+  npx @n3rd1n/unused-files-seeker src/app/page.tsx --root src
   npx @n3rd1n/unused-files-seeker src/App.tsx --json > report.json
   npx @n3rd1n/unused-files-seeker src/App.tsx --fail-on-found   # for CI
 
@@ -112,6 +130,7 @@ Options:
   -y, --yes             Skip the confirmation prompt for --delete
   --json                Print the result as JSON (absolute paths) on stdout
   --fail-on-found       Exit with code 1 when unused files remain
+  --root <dir>          Directory to scan (default: the entry file's folder)
   --ignore <path>       Ignore file or folder (can be used multiple times)
   -h, --help            Show this help
   -v, --version         Show the version
@@ -169,6 +188,9 @@ async function main(): Promise<void> {
 	}
 
 	log(`\n🔍 Scanning from: ${options.entryFile}`)
+	if (options.root) {
+		log(`📂 Root: ${options.root}`)
+	}
 	if (options.ignorePaths.length > 0) {
 		log(`🚫 Ignoring: ${options.ignorePaths.join(', ')}`)
 	}
@@ -178,6 +200,7 @@ async function main(): Promise<void> {
 	try {
 		result = scanUnusedFiles(options.entryFile, {
 			ignore: options.ignorePaths,
+			...(options.root ? { root: options.root } : {}),
 		})
 	} catch (error) {
 		console.error(`❌ ${(error as Error).message}\n`)

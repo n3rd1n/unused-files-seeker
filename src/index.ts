@@ -41,6 +41,12 @@ type ModuleResolution = {
 
 type ScanOptions = {
 	ignore?: string[]
+	/**
+	 * Directory searched for deletion candidates. Defaults to the directory of
+	 * the entry file, which is too narrow when the entry sits in a subfolder
+	 * such as src/app/page.tsx.
+	 */
+	root?: string
 }
 
 type DeleteOptions = {
@@ -574,7 +580,18 @@ export function scanUnusedFiles(
 		throw new Error(`Entry path is not a file: ${entryFile}`)
 	}
 
-	const scanDir = path.dirname(absoluteEntry)
+	const scanDir = options.root
+		? path.resolve(options.root)
+		: path.dirname(absoluteEntry)
+
+	if (options.root) {
+		if (!fs.existsSync(scanDir)) {
+			throw new Error(`Root directory not found: ${options.root}`)
+		}
+		if (!fs.statSync(scanDir).isDirectory()) {
+			throw new Error(`Root path is not a directory: ${options.root}`)
+		}
+	}
 	// Bare specifiers only resolve through tsconfig baseUrl/paths.
 	const resolution = readModuleResolution(absoluteEntry)
 	// Resolve ignore paths relative to current working directory

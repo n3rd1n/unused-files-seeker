@@ -83,6 +83,31 @@ test('--delete --yes deletes without prompting', () => {
 	fs.rmSync(dir, { recursive: true, force: true })
 })
 
+test('--root and --root= both widen the scan', () => {
+	const entry = path.join(FIXTURES, 'root-option', 'src', 'app', 'App.ts')
+	const src = path.join(FIXTURES, 'root-option', 'src')
+
+	for (const args of [['--root', src], [`--root=${src}`]]) {
+		const result = run([entry, ...args, '--json'])
+		assert.strictEqual(result.status, 0)
+		const report = JSON.parse(result.stdout)
+		assert.deepStrictEqual(
+			report.unusedFiles.map((f) => path.basename(f)).sort(),
+			['local-orphan.ts', 'orphan.ts']
+		)
+	}
+})
+
+test('a missing --root exits 1', () => {
+	const result = run([
+		path.join(FIXTURES, 'root-option', 'src', 'app', 'App.ts'),
+		'--root',
+		path.join(FIXTURES, 'root-option', 'nope'),
+	])
+	assert.strictEqual(result.status, 1)
+	assert.match(result.stderr, /Root directory not found/)
+})
+
 test('a missing entry file exits 1', () => {
 	const result = run([path.join(FIXTURES, 'barrel', 'nope.ts')])
 	assert.strictEqual(result.status, 1)

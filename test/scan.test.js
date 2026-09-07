@@ -134,6 +134,56 @@ test('resolves and collects .mts/.cjs/.mjs files', () => {
 	assert.deepStrictEqual(unusedIn('extensions'), ['orphan.mjs'])
 })
 
+test('without --root only the entry file directory is scanned', () => {
+	const root = fixture('root-option')
+	const result = scanUnusedFiles(path.join(root, 'src', 'app', 'App.ts'))
+
+	// src/lib and src/components are invisible from src/app.
+	assert.deepStrictEqual(
+		result.unusedFiles.map((f) => path.relative(root, f)).sort(),
+		[path.join('src', 'app', 'local-orphan.ts')]
+	)
+})
+
+test('--root widens the scan to the whole source tree', () => {
+	const root = fixture('root-option')
+	const result = scanUnusedFiles(path.join(root, 'src', 'app', 'App.ts'), {
+		root: path.join(root, 'src'),
+	})
+
+	assert.deepStrictEqual(
+		result.unusedFiles.map((f) => path.relative(root, f)).sort(),
+		[
+			path.join('src', 'app', 'local-orphan.ts'),
+			path.join('src', 'lib', 'orphan.ts'),
+		]
+	)
+	// Alias-imported files across the wider tree still count as used.
+	const used = result.usedFiles
+	assert.ok(used.has(path.join(root, 'src', 'lib', 'used.ts')))
+	assert.ok(used.has(path.join(root, 'src', 'components', 'Button.ts')))
+})
+
+test('a missing root directory throws', () => {
+	assert.throws(
+		() =>
+			scanUnusedFiles(fixture('root-option', 'src', 'app', 'App.ts'), {
+				root: fixture('root-option', 'does-not-exist'),
+			}),
+		/Root directory not found/
+	)
+})
+
+test('a file passed as root throws', () => {
+	assert.throws(
+		() =>
+			scanUnusedFiles(fixture('root-option', 'src', 'app', 'App.ts'), {
+				root: fixture('root-option', 'tsconfig.json'),
+			}),
+		/not a directory/
+	)
+})
+
 test('a missing entry file throws instead of reporting everything as unused', () => {
 	assert.throws(
 		() => scanUnusedFiles(fixture('barrel', 'does-not-exist.ts')),
